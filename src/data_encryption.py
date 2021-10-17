@@ -1,17 +1,21 @@
+import os.path
+import struct
 from random import randint
+from typing import List, Tuple
+
 import diffie_hellman
 
 BORDER = 10 ** 9
 
 
-def inter_prime(p):
+def inter_prime(p: int) -> int:
     result = randint(2, p)
     while diffie_hellman.NOD(p, result) != 1:
         result = randint(2, p)
     return result
 
 
-def prime():
+def prime() -> int:
     while True:
         result = randint(2, BORDER)
         if diffie_hellman.Ferma(result):
@@ -19,7 +23,7 @@ def prime():
     return result
 
 
-def shamir_cipher_encode(msg_in_bytes):
+def shamir_cipher_encode(msg_in_bytes: bytearray) -> Tuple[int, int, List[int]]:
     p = prime()
     Ca = inter_prime(p - 1)
     Da = diffie_hellman.EuclidAlgorithm(p - 1, Ca)[-1]
@@ -42,9 +46,9 @@ def shamir_cipher_encode(msg_in_bytes):
     return p, Db, encoded_msg_in_byte
 
 
-def shamir_cipher_decode(p, db, encoded_msg):
+def shamir_cipher_decode(p: int, db: int, encoded_int_list: List[int]) -> List[int]:
     decoded_msg = list()
-    for byte in encoded_msg:
+    for byte in encoded_int_list:
         x4 = diffie_hellman.Exponentiation(byte, db, p)
         decoded_msg.append(x4)
         # print("d ", x4)
@@ -110,7 +114,7 @@ def rsa_cipher_encode(msg):
     P = prime()
     Q = prime()
     N = P * Q
-    phi = (P - 1)*(Q - 1)
+    phi = (P - 1) * (Q - 1)
 
     while True:
         d = inter_prime(phi)
@@ -136,37 +140,71 @@ def rsa_cipher_decode(c, N, encoded_msg):
     return decoded_msg
 
 
+def read_file_bytes(filepath: str) -> bytearray:
+    with open(filepath, 'rb') as file:
+        return bytearray(file.read())
+
+
+def write_file_bytes_as_str(_bytes: List[int], filepath: str):
+    with open(filepath, 'w') as file:
+        string = ''.join([chr(_byte) for _byte in _bytes])
+        file.write(string)
+
+
+def write_encoded_as_int_list(encoded_int_list: List[int], filepath: str):
+    with open(filepath, 'wb') as file:
+        encoded_bytes = struct.pack(f'{len(encoded_int_list)}Q', *encoded_int_list)
+        file.write(encoded_bytes)
+
+
+def read_bytes_as_int_list(filepath: str) -> List[int]:
+    with open(filepath, 'rb') as file:
+        _bytes = file.read()
+        list_size = len(_bytes) // 8
+        unpacked_ints = struct.unpack(f'{list_size}Q', _bytes)
+        return list(unpacked_ints)
+
+
 def main():
-    with open('../res/harry_potter.txt', 'rb') as main_file:
-        text_in_bytes = bytearray(main_file.read())
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    res_dir = os.path.join(script_dir, '..', 'res')
+    main_filepath = os.path.join(res_dir, 'harry_potter.txt')
 
-    p, Db, encoded_text = shamir_cipher_encode(text_in_bytes)
-    with open('../res/shamir_encode.txt', 'w') as file_shamir_encode:
-        file_shamir_encode.write(str(encoded_text))
-    shamir_decoded = shamir_cipher_decode(p, Db, encoded_text)
-    with open('../res/shamir_decode.txt', 'wb') as shamir_decode:
-        shamir_decode.write(bytearray(shamir_decoded))
+    # read file bytes
+    text_in_bytes = read_file_bytes(main_filepath)
 
-    a, p, x, encoded_text = el_gamal_cipher_encode(text_in_bytes)
-    with open('../res/el_gamal_encode.txt', 'w') as file_el_gamal_encode:
-        file_el_gamal_encode.write(str(encoded_text))
-    el_gamal_decoded = el_gamal_decode(a, p, x, encoded_text)
-    with open('../res/el_gamal_decode.txt', 'wb') as file_el_gamal_decode:
-        file_el_gamal_decode.write(bytearray(el_gamal_decoded))
+    # shamir payload
+    p, Db, encoded_int_list = shamir_cipher_encode(text_in_bytes)
+    write_encoded_as_int_list(encoded_int_list, os.path.join(res_dir, 'shamir_encode.txt'))
+    encoded_int_list = read_bytes_as_int_list(os.path.join(res_dir, 'shamir_encode.txt'))
 
-    k, encoded_text = vernam_cipher_encode(text_in_bytes)
-    with open('../res/vernam_encode.txt', 'w') as file_vernam_encode:
-        file_vernam_encode.write(str(encoded_text))
-    vernam_decoded = vernam_cipher_decode(k, encoded_text)
-    with open('../res/vernam_decode.txt', 'wb') as file_vernam_decode:
-        file_vernam_decode.write(bytearray(vernam_decoded))
+    shamir_decoded = shamir_cipher_decode(p, Db, encoded_int_list)
+    write_file_bytes_as_str(shamir_decoded, os.path.join(res_dir, 'shamir_decode.txt'))
 
-    c, N, encoded_text = rsa_cipher_encode(text_in_bytes)
-    with open('../res/rsa_encode.txt', 'w') as file_rsa_encode:
-        file_rsa_encode.write(str(encoded_text))
-    rsa_decoded = rsa_cipher_decode(c, N, encoded_text)
-    with open('../res/rsa_decode.txt', 'wb') as file_rsa_decode:
-        file_rsa_decode.write(bytearray(rsa_decoded))
+    # el-gamal payload
+    a, p, x, encoded_int_list = el_gamal_cipher_encode(text_in_bytes)
+    write_encoded_as_int_list(encoded_int_list, os.path.join(res_dir, 'el_gamal_encode.txt'))
+    encoded_int_list = read_bytes_as_int_list(os.path.join(res_dir, 'el_gamal_encode.txt'))
+
+    el_gamal_decoded = el_gamal_decode(a, p, x, encoded_int_list)
+    write_file_bytes_as_str(el_gamal_decoded, os.path.join(res_dir, 'el_gamal_decode.txt'))
+
+    # vernam-cipher payload
+    k, encoded_int_list = vernam_cipher_encode(text_in_bytes)
+    write_encoded_as_int_list(encoded_int_list, os.path.join(res_dir, 'vernam_encode.txt'))
+    encoded_int_list = read_bytes_as_int_list(os.path.join(res_dir, 'vernam_encode.txt'))
+
+    vernam_decoded = vernam_cipher_decode(k, encoded_int_list)
+    write_file_bytes_as_str(el_gamal_decoded, os.path.join(res_dir, 'vernam_decode.txt'))
+
+    # rsa payload
+    c, N, encoded_int_list = rsa_cipher_encode(text_in_bytes)
+    write_encoded_as_int_list(encoded_int_list, os.path.join(res_dir, 'rsa_encode.txt'))
+    encoded_int_list = read_bytes_as_int_list(os.path.join(res_dir, 'rsa_encode.txt'))
+
+    rsa_decoded = rsa_cipher_decode(c, N, encoded_int_list)
+    write_file_bytes_as_str(rsa_decoded, os.path.join(res_dir, 'rsa_decode.txt'))
 
 
 if __name__ == '__main__':
